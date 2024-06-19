@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import tensorflow as tf
-from tensorflow.keras import layers, models
+from ncps.tf import LTCCell
+from ncps.wirings import NCPWiring  # Correct import from NCP examples
 import redis
 import json
 import base64
@@ -12,27 +13,14 @@ app = Flask(__name__)
 # Initialize Redis client
 redis_client = redis.Redis(host='10.0.1.35', port=6379, decode_responses=True)
 
-class LiquidLayer(layers.Layer):
-    def __init__(self, units=64):
-        super(LiquidLayer, self).__init__()
-        self.units = units
-
-    def build(self, input_shape):
-        self.w = self.add_weight(shape=(input_shape[-1], self.units),
-                                 initializer='random_normal',
-                                 trainable=True)
-        self.b = self.add_weight(shape=(self.units,),
-                                 initializer='random_normal',
-                                 trainable=True)
-
-    def call(self, inputs):
-        return tf.nn.tanh(tf.matmul(inputs, self.w) + self.b)
-
 def build_liquid_network(input_shape, liquid_units, dense_units, output_units):
-    model = models.Sequential()
-    model.add(LiquidLayer(liquid_units))  # Liquid Layer with variable units
-    model.add(layers.Dense(dense_units, activation='relu'))  # Dense Layer with variable units
-    model.add(layers.Dense(output_units))  # Output Layer with variable units
+    # Define the wiring for the LTCCell
+    wiring = NCPWiring(input_dim=input_shape[1], output_dim=output_units, num_neurons=liquid_units)
+
+    model = tf.keras.Sequential()
+    model.add(tf.keras.layers.RNN(LTCCell(wiring), input_shape=input_shape))  # NCP Liquid Layer with variable units
+    model.add(tf.keras.layers.Dense(dense_units, activation='relu'))  # Dense Layer with variable units
+    model.add(tf.keras.layers.Dense(output_units))  # Output Layer with variable units
     return model
 
 @app.route('/update-parameters', methods=['POST'])
@@ -45,16 +33,18 @@ def update_parameters():
     # Build and compile the model with new parameters
     input_shape = (None, 10)
     output_units = 1
+    model = build_liquid_network(input_shape, liquid_units, dense_units, output_units)
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate), loss='mse')
+    
     global model_instance
-    model_instance = build_liquid_network(input_shape, liquid_units, dense_units, output_units)
-    model_instance.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate), loss='mse')
+    model_instance = model
     
     return jsonify({"success": True, "status": "parameters updated"})
 
 @app.route('/status', methods=['GET'])
 def status():
     config = {
-        "liquid_units": model_instance.layers[0].units,
+        "liquid_units": model_instance.layers[0].cell.units,
         "dense_units": model_instance.layers[1].units,
         "learning_rate": model_instance.optimizer.learning_rate.numpy(),
         "status": "running"
@@ -66,7 +56,7 @@ def neuron_states():
     if model_instance is None:
         return jsonify({"error": "Model not initialized"}), 400
     
-    neuron_states = model_instance.layers[0].w.numpy().tolist()
+    neuron_states = model_instance.layers[0].cell.get_weights()[0].tolist()
     redis_client.set('neuron_states', json.dumps(neuron_states))
     
     return jsonify(neuron_states)
