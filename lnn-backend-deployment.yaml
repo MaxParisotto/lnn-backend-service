@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lnn-backend
+  namespace: lnn-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lnn-backend
+  template:
+    metadata:
+      labels:
+        app: lnn-backend
+    spec:
+      containers:
+      - name: backend
+        image: maxparisotto/lnn-backend:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: REDIS_HOST
+          value: "10.0.1.35"
+        - name: REDIS_PORT
+          value: "6379"        
+        resources:
+          requests:
+            nvidia.com/gpu: "2"  # Request 2 GPUs
+            cpu: "2"  # Adjust CPU requests as needed
+            memory: "4Gi"  # Adjust memory requests as needed
+          limits:
+            nvidia.com/gpu: "2"  # Limit to 2 GPUs
+            cpu: "4"  # Adjust CPU limits as needed
+            memory: "8Gi"  # Adjust memory limits as needed
+        volumeMounts:
+        - mountPath: /app/data
+          name: lnn-backend-storage
+      volumes:
+      - name: lnn-backend-storage
+        persistentVolumeClaim:
+          claimName: lnn-backend-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lnn-backend-service
+  namespace: lnn-backend
+spec:
+  selector:
+    app: lnn-backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer

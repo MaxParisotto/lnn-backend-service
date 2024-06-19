@@ -1,0 +1,183 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "url": "http://192.168.13.123:5000/status",
+          "options": {}
+        },
+        "name": "Get LNN Status",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 1,
+        "position": [
+          500,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "url": "http://192.168.13.123:5000/neuron-states",
+          "options": {}
+        },
+        "name": "Get Neuron States",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 1,
+        "position": [
+          500,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "functionCode": "const markdown = `<pre>${JSON.stringify($json['data'], null, 2)}</pre>`;\nreturn [{ json: { markdown } }];"
+        },
+        "name": "Display Neuron States",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 1,
+        "position": [
+          800,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "functionCode": "const markdown = `\n# Liquid Neural Network Status\n\n- Status: **${$json['status']}**\n- Learning Rate: **${$json['learning_rate']}**\n- Liquid Units: **${$json['liquid_units']}**\n- Dense Units: **${$json['dense_units']}**\n`;\nreturn [{ json: { markdown } }];"
+        },
+        "name": "Format LNN Status",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 1,
+        "position": [
+          800,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "url": "http://192.168.13.123:5000/store-interaction",
+          "responseFormat": "json",
+          "options": {},
+          "httpMethod": "POST",
+          "bodyParametersUi": {
+            "parameter": [
+              {
+                "name": "input",
+                "value": "{{$node['Get LNN Status'].json}}"
+              },
+              {
+                "name": "output",
+                "value": "{{$node['Get Neuron States'].json}}"
+              }
+            ]
+          }
+        },
+        "name": "Store Interaction",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 1,
+        "position": [
+          1100,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "triggerTimes": {
+            "item": [
+              {
+                "mode": "everyMinute"
+              }
+            ]
+          }
+        },
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.cron",
+        "typeVersion": 1,
+        "position": [
+          100,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "url": "http://192.168.13.123:5000/neuron-states",
+          "options": {}
+        },
+        "name": "Check Status and Neuron States",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 1,
+        "position": [
+          250,
+          200
+        ]
+      },
+      {
+        "parameters": {
+          "functionCode": "const input = $json['input'];\nconst output = $json['output'];\nconst interaction = { input, output };\nreturn [{ json: interaction }];"
+        },
+        "name": "Prepare Interaction Data",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 1,
+        "position": [
+          800,
+          600
+        ]
+      }
+    ],
+    "connections": {
+      "Get LNN Status": {
+        "main": [
+          [
+            {
+              "node": "Format LNN Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Neuron States": {
+        "main": [
+          [
+            {
+              "node": "Display Neuron States",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Prepare Interaction Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format LNN Status": {
+        "main": [
+          [
+            {
+              "node": "Store Interaction",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Store Interaction": {
+        "main": []
+      },
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Check Status and Neuron States",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Get LNN Status",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  }
